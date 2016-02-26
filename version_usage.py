@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import datetime
 import json
+import locale
 import os
 import pandas
 import requests # python-requests
@@ -44,46 +45,74 @@ def getJson(dateMin, dateMax):
             status_code = 0
     return results
 
+def truncateDates(json_doc):
+    for item in json_doc:
+        item['dateTime'] = item['dateTime'][0:10]
+    return json_doc
+
 def getData(dateMin, dateMax):
     filename = "usage-%s-%s.json" % (dateMin, dateMax)
 
     if not os.path.exists(filename):
         results = getJson(dateMin, dateMax)
+        results = truncateDates(results)
         print "Writing json to '%s'" % filename
         with open(filename, 'w') as handle:
             json.dump(results, handle)
 
     print "Loading information from '%s'" % filename
     with open(filename, 'r') as handle:
-        data = pandas.read_json(handle)
+        data = pandas.read_json(handle)#, date_unit='D')
 
     return data
 
-def filter(data, key, values):
-    return data[data[key].isin(values)]
+def filter(data, key, values, isIn=True):
+    return data[data[key].isin(values)==isIn]
 
 def truncateMantidVersion(data):
-    versions = [ '3.%d.2' % minor for minor in xrange(1,7) ]
+    versions = [ '3.%d' % minor for minor in xrange(1,7) ]
+
     for version in versions:
-        exp = version + '0\d\d.+'
-        data['mantidVersion'] = data['mantidVersion'].str.replace(exp, version)
+        exp = version + '.20\d\d.+'
+        nightly = version + '-nightly'
+        data['mantidVersion'] = data['mantidVersion'].str.replace(exp, nightly)
     return data
 
+locale.setlocale(locale.LC_ALL,'')
 
+# get the data and load into pandas
 today = datetime.datetime.now()
 dateMin = (today - datetime.timedelta(90)).strftime("%Y-%m-%d")
 tomorrow = today +  datetime.timedelta(1)
 dateMax = tomorrow.strftime("%Y-%m-%d")
-
 data = getData(dateMin, dateMax)
 
-mtdVersions = ['3.1.0', '3.1.1', '3.2.0', '3.2.1', '3.3.0', '3.4.0', '3.4.1']
+# filter data
+rhel7 = ['CentOS Linux 7 (Core)',
+         'Red Hat Enterprise Linux',
+         'Red Hat Enterprise Linux Server 7.1 (Maipo)',
+         'Red Hat Enterprise Linux Workstation 7.1 (Maipo)',
+         'Red Hat Enterprise Linux Workstation 7.2 (Maipo)',
+         'Scientific Linux 7.1 (Nitrogen)']
+mtdStable = ['3.1.0', '3.1.1', '3.2.0', '3.2.1', '3.3.0', '3.4.0', '3.4.1', '3.5.0', '3.5.1']
+print "before filtering:", locale.format('%d', data.size, True)
+data = filter(data, 'uid', ['c87a8ca60f0891b79d192fa86f019916'], False)
 data = filter(data, 'osName', ['Linux'])
 data = filter(data, 'osArch', ['x86_64'])
-#data = filter(data, 'mantidVersion', mtdVersions)
+#data = filter(data, 'mantidVersion', mtdVersions, False)
+print "before osReadable filtering:", locale.format('%d', data.size, True)
+data = filter(data, 'osReadable', rhel7)
+print "after filtering:", locale.format('%d', data.size, True)
+
+# transform data
 data = truncateMantidVersion(data)
 #data = data.set_index(['dateTime', 'mantidVersion'])
 #data = data.set_index('dateTime', ['mantidVersion', 'osVersion', 'osReadable'])
 
-#a = data.groupby('dateTime')
-#a.mantidVersion.apply(pd.value_counts).unstack(-1).fillna(0)
+groups = data.groupby('dateTime')
+byVersion = groups.mantidVersion.apply(pandas.value_counts).unstack(-1).fillna(0)
+
+
+##### plotting in ipython
+#%pylab
+#byVersion.plot()
