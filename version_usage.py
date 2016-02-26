@@ -83,3 +83,7 @@ data = filter(data, 'osArch', ['x86_64'])
 #data = filter(data, 'mantidVersion', mtdVersions)
 data = truncateMantidVersion(data)
 #data = data.set_index(['dateTime', 'mantidVersion'])
+#data = data.set_index('dateTime', ['mantidVersion', 'osVersion', 'osReadable'])
+
+#a = data.groupby('dateTime')
+#a.mantidVersion.apply(pd.value_counts).unstack(-1).fillna(0)
